@@ -1,10 +1,38 @@
-## Dice Backend (NestJS + Mongo + SSE)
+## Dice Backend (NestJS + Supabase + SSE)
 
-### Setup
+### Prereqs
+- Node 18+ with `pnpm` or `npm`.
+- Supabase project (service role key available).
+
+### Database (Supabase/Postgres)
+Create the table once in SQL editor (adjust schema/database as needed):
+```
+create table if not exists rounds (
+  id uuid primary key default gen_random_uuid(),
+  chat_id bigint not null,
+  created_by bigint not null,
+  start_at timestamptz not null,
+  end_at timestamptz not null,
+  dice_values integer[] null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rounds_chat_start_idx on rounds (chat_id, start_at desc);
+```
+If `gen_random_uuid()` is unavailable, enable the `pgcrypto` extension or switch to `uuid_generate_v4()`.
+
+### Environment
+- `SUPABASE_URL` — project URL (e.g. `https://<ref>.supabase.co`)
+- `SUPABASE_SERVICE_ROLE_KEY` — service role key (used server-side only)
+- `TELEGRAM_BOT_TOKEN` — bot token (required for Telegram replies)
+- `ADMIN_IDS` — comma-separated admin user IDs (empty = allow all)
+- `PORT` — optional HTTP port (default 3000)
+
+### Install & Run
 - Install deps: `pnpm install` (or `npm install`)
-- Env: set `MONGO_URI` (e.g. `mongodb://localhost:27017/dice`)
-- Run dev: `npm start`
-- Build: `npm run build` then `npm run start:prod`
+- Dev: `npm run start:dev`
+- Build: `npm run build`
+- Prod: `npm run start:prod` (uses `dist/main.js`)
 
 ### Endpoints
 - `GET /sse?chatId=<number>` — Server-Sent Events stream per chat. Heartbeat every 15s.
@@ -44,7 +72,7 @@ curl -X POST http://localhost:3000/telegram/webhook \
     }
   }'
 ```
-Expected: `round.scheduled` immediately, `round.started` ~1.5s, `round.result` ~26.5s with provided dice. Mongo has the round with `diceValues` filled. `last.outcome` updates to the result.
+Expected: `round.scheduled` immediately, `round.started` ~1.5s, `round.result` ~26.5s with provided dice. Supabase has the round with `dice_values` filled. `last.outcome` updates to the result.
 
 3) Cancel within 1.5s  
 ```
@@ -87,5 +115,5 @@ curl -X POST http://localhost:3000/telegram/webhook \
     }
   }'
 ```
-Expect logs showing warmup attempt/result; no DB writes besides ping. Configure admin allowlist via `ADMIN_IDS` (comma-separated). If unset, /warm is allowed for any sender.
+Expect logs showing warmup attempt/result; no DB writes besides Supabase head query. Configure admin allowlist via `ADMIN_IDS` (comma-separated). If unset, /warm is allowed for any sender.
 

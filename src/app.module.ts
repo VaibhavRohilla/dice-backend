@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
+import { ConfigModule } from '@nestjs/config';
 
 import { RoundsModule } from './rounds/rounds.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -12,12 +11,6 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        uri: cfg.get<string>('MONGO_URI'),
-      }),
-    }),
     DbModule,
     BootstrapModule,
     RealtimeModule,

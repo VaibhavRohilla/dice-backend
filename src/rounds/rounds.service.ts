@@ -1,30 +1,73 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Round, RoundDocument } from './rounds.schema';
+import { Inject, Injectable } from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_CLIENT } from '../db/db.module';
+import { RoundRecord, RoundRow } from './rounds.types';
 
 @Injectable()
 export class RoundsService {
-  constructor(@InjectModel(Round.name) private readonly roundModel: Model<RoundDocument>) {}
+  constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
 
   async insertStartedRound(input: {
     chatId: number;
     createdBy: number;
     startAt: Date;
     endAt: Date;
-  }): Promise<RoundDocument> {
-    return this.roundModel.create({
-      ...input,
-      diceValues: null,
-      createdAt: new Date(),
-    });
+  }): Promise<RoundRecord> {
+    const now = new Date();
+    const { data, error } = await this.supabase
+      .from('rounds')
+      .insert([
+        {
+          chat_id: input.chatId,
+          created_by: input.createdBy,
+          start_at: input.startAt.toISOString(),
+          end_at: input.endAt.toISOString(),
+          dice_values: null,
+          created_at: now.toISOString(),
+        },
+      ])
+      .select()
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new Error(`insertStartedRound failed: ${error?.message ?? 'no data returned'}`);
+    }
+
+    return this.mapRoundRow(data);
   }
 
   async setDiceValues(roundId: string, diceValues: number[]): Promise<void> {
-    await this.roundModel.updateOne({ _id: roundId }, { $set: { diceValues } }).exec();
+    const { error } = await this.supabase.from('rounds').update({ dice_values: diceValues }).eq('id', roundId);
+    if (error) throw new Error(`setDiceValues failed: ${error.message}`);
   }
 
-  async getLatestRound(chatId: number): Promise<RoundDocument | null> {
-    return this.roundModel.findOne({ chatId }).sort({ startAt: -1 }).exec();
+  async getLatestRound(chatId: number): Promise<RoundRecord | null> {
+    const { data, error } = await this.supabase
+      .from('rounds')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('start_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      // PGRST116 => no rows when using maybeSingle
+      if (error.code === 'PGRST116') return null;
+      throw new Error(`getLatestRound failed: ${error.message}`);
+    }
+
+    return data ? this.mapRoundRow(data) : null;
+  }
+
+  private mapRoundRow(row: RoundRow): RoundRecord {
+    return {
+      id: String(row.id),
+      chatId: row.chat_id,
+      createdBy: row.created_by,
+      startAt: new Date(row.start_at),
+      endAt: new Date(row.end_at),
+      diceValues: row.dice_values,
+      createdAt: new Date(row.created_at),
+    };
   }
 }

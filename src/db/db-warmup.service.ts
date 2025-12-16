@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_CLIENT } from './db.module';
 
 @Injectable()
 export class DbWarmupService {
@@ -10,7 +10,7 @@ export class DbWarmupService {
   private warming: Promise<boolean> | null = null;
   private lastOkAt: number | null = null;
 
-  constructor(@InjectConnection() private readonly conn: Connection) {}
+  constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
 
   isReady() {
     return this.ready;
@@ -53,12 +53,12 @@ export class DbWarmupService {
   private async tryPingLoop(retries: number, backoffMs: number): Promise<boolean> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        if (!this.conn.db) throw new Error('DB not connected');
-        await this.conn.db.admin().ping(); // forces server selection/wakeup
+        const { error } = await this.supabase.from('rounds').select('id', { head: true, count: 'exact' }).limit(1);
+        if (error) throw error;
         this.logger.log(`DB warmup ok (attempt ${attempt + 1})`);
         return true;
       } catch (e) {
-        const msg = (e as Error).message ?? String(e);
+        const msg = (e as Error)?.message ?? String(e);
         this.logger.warn(`DB ping failed (attempt ${attempt + 1}/${retries + 1}): ${msg}`);
         if (attempt < retries) await this.sleep(backoffMs * (attempt + 1));
       }

@@ -1,13 +1,12 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { Round, RoundSchema } from './rounds.schema';
 import { RoundsService } from './rounds.service';
 import { RoundsController } from './rounds.controller';
 import { SchedulerModule } from '../scheduler/scheduler.module';
+import { DbModule } from '../db/db.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Round.name, schema: RoundSchema }]),
+    DbModule,
     forwardRef(() => SchedulerModule),
   ],
   providers: [RoundsService],

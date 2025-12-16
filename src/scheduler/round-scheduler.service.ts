@@ -71,7 +71,7 @@ export class RoundSchedulerService {
 
         const s = this.scheduled.get(chatId);
         if (!s) return;
-        s.roundId = String(doc._id);
+        s.roundId = String(doc.id);
 
         this.hub.emit(chatId, 'round.started', {
           roundId: s.roundId,
