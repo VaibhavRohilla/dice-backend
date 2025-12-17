@@ -15,6 +15,7 @@ describe('RoundSchedulerService', () => {
     rounds = {
       insertStartedRound: jest.fn(),
       setDiceValues: jest.fn(),
+      markRoundCancelled: jest.fn(),
       getLatestRound: jest.fn(),
     } as any;
     service = new RoundSchedulerService(hub, rounds);
@@ -42,7 +43,7 @@ describe('RoundSchedulerService', () => {
     rounds.insertStartedRound.mockResolvedValue({ id: 'r1' } as any);
     rounds.setDiceValues.mockResolvedValue(undefined);
 
-    const res = service.scheduleRound(10, 99, dice);
+    const res = service.scheduleRound(10, 99, dice, 'Test Chat');
     expect(res.ok).toBe(true);
     expect(hub.emit).toHaveBeenCalledWith(10, 'round.scheduled', expect.any(Object));
 
@@ -68,12 +69,36 @@ describe('RoundSchedulerService', () => {
   });
 
   it('cancels before start', () => {
-    service.scheduleRound(5, 5, dice);
+    service.scheduleRound(5, 5, dice, 'Another Chat');
     const res = service.cancelRound(5);
     expect(res.ok).toBe(true);
     expect(hub.emit).toHaveBeenCalledWith(5, 'round.cancelled', expect.any(Object));
     jest.advanceTimersByTime(2000);
     expect(rounds.insertStartedRound).not.toHaveBeenCalled();
+  });
+
+  it('cancels during countdown and persists cancellation at end', async () => {
+    rounds.insertStartedRound.mockResolvedValue({ id: 'r2' } as any);
+    rounds.markRoundCancelled.mockResolvedValue(undefined);
+
+    service.scheduleRound(7, 7, dice, 'Chat');
+
+    // Start the round
+    jest.advanceTimersByTime(2000);
+    await Promise.resolve();
+    expect(rounds.insertStartedRound).toHaveBeenCalledTimes(1);
+
+    // Cancel after start, before end
+    const cancelRes = service.cancelRound(7);
+    expect(cancelRes.ok).toBe(true);
+
+    // Advance to end
+    jest.advanceTimersByTime(26000);
+    await Promise.resolve();
+
+    expect(rounds.markRoundCancelled).toHaveBeenCalledTimes(1);
+    expect(rounds.setDiceValues).not.toHaveBeenCalled();
+    expect(hub.emit).toHaveBeenCalledWith(7, 'round.cancelled', expect.any(Object));
   });
 });
 

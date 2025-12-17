@@ -10,6 +10,7 @@ Create the table once in SQL editor (adjust schema/database as needed):
 create table if not exists rounds (
   id uuid primary key default gen_random_uuid(),
   chat_id bigint not null,
+  name text null,
   created_by bigint not null,
   start_at timestamptz not null,
   end_at timestamptz not null,
@@ -26,6 +27,10 @@ If `gen_random_uuid()` is unavailable, enable the `pgcrypto` extension or switch
 - `SUPABASE_SERVICE_ROLE_KEY` — service role key (used server-side only)
 - `TELEGRAM_BOT_TOKEN` — bot token (required for Telegram replies)
 - `ADMIN_IDS` — comma-separated admin user IDs (empty = allow all)
+- `TELEGRAM_NOTIFY_CHAT_ID` — optional chat ID to receive "Backend connected" on startup
+- `CHAT_ID` (or `SINGLE_CHAT_ID`) — fixed chat id for single-tenant mode (default `1`)
+- `ROUND_START_BUFFER_MS` — delay between scheduling and start (default `1500`)
+- `ROUND_DURATION_MS` — delay between start and result (default `25000`)
 - `PORT` — optional HTTP port (default 3000)
 
 ### Install & Run
@@ -35,8 +40,8 @@ If `gen_random_uuid()` is unavailable, enable the `pgcrypto` extension or switch
 - Prod: `npm run start:prod` (uses `dist/main.js`)
 
 ### Endpoints
-- `GET /sse?chatId=<number>` — Server-Sent Events stream per chat. Heartbeat every 15s.
-- `GET /rounds/current?chatId=<number>` — Snapshot for UI.
+- `GET /sse` — Server-Sent Events stream (single chat). Heartbeat every 15s.
+- `GET /rounds/current` — Snapshot for UI.
 - `POST /telegram/webhook` — Handles `/play` and `/cancel` Telegram updates.
 
 ### SSE events

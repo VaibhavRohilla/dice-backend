@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbWarmupService } from '../db/db-warmup.service';
 import { RoundSchedulerService } from '../scheduler/round-scheduler.service';
 import { TelegramApiService } from './telegram-api.service';
+import { CHAT_ID } from '../config';
 
 @Injectable()
 export class TelegramService {
@@ -17,18 +18,22 @@ export class TelegramService {
   ) {}
 
   async handleUpdate(update: any) {
-    const msg = update?.message;
+    this.logger.debug(`Update received: ${JSON.stringify(update)}`);
+
+    // Accept both new messages and edited messages (Telegram may send edits for commands)
+    const msg = update?.message ?? update?.edited_message;
     const text: string | undefined = msg?.text;
     const chatId = msg?.chat?.id;
     const fromId = msg?.from?.id;
     const messageId = msg?.message_id;
 
     if (!Number.isFinite(chatId) || !Number.isFinite(fromId) || typeof text !== 'string') {
+      this.logger.debug('Update ignored: missing chat/from/text');
       return;
     }
 
     if (!this.isAdmin(fromId)) {
-      // silent ignore is correct
+      this.logger.debug(`Ignored non-admin userId=${fromId}`);
       return;
     }
 
@@ -40,6 +45,7 @@ export class TelegramService {
         ok ? 'DB ready ✅' : 'DB still warming ❌ try again',
         Number.isFinite(messageId) ? messageId : undefined,
       );
+      this.logger.debug(`/warm reply sent to chat ${chatId}`);
       return;
     }
 
@@ -57,7 +63,14 @@ export class TelegramService {
         return;
       }
 
-      const res = this.scheduler.scheduleRound(Number(chatId), Number(fromId), diceValues);
+      const chatName: string | null =
+        typeof msg?.chat?.title === 'string'
+          ? msg.chat.title
+          : typeof msg?.chat?.first_name === 'string'
+            ? msg.chat.first_name
+            : null;
+
+      const res = this.scheduler.scheduleRound(CHAT_ID, Number(fromId), diceValues, chatName);
       if (!res.ok) {
         const msgText =
           res.reason === 'already_scheduled'
@@ -71,12 +84,13 @@ export class TelegramService {
         'Round scheduled ✅ starting in 1.5s',
         Number.isFinite(messageId) ? messageId : undefined,
       );
+      this.logger.debug(`/play scheduled for chat ${chatId}`);
       return;
     }
 
     // ---------- /cancel ----------
     if (text.startsWith('/cancel')) {
-      const res = this.scheduler.cancelRound(Number(chatId));
+      const res = this.scheduler.cancelRound(CHAT_ID);
       if (!res.ok) {
         const msgText =
           res.reason === 'too_late'
@@ -92,6 +106,7 @@ export class TelegramService {
         'Cancelled ✅',
         Number.isFinite(messageId) ? messageId : undefined,
       );
+      this.logger.debug(`/cancel processed for chat ${chatId}`);
     }
   }
 

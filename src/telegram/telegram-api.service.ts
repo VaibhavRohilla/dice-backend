@@ -11,6 +11,8 @@ export class TelegramApiService {
       return { ok: false as const, error: 'missing_token' };
     }
 
+    this.logger.debug(`Sending Telegram message to chat=${chatId}`);
+
     const url = `https://api.telegram.org/bot${this.token}/sendMessage`;
     const payload: any = {
       chat_id: chatId,
@@ -31,6 +33,7 @@ export class TelegramApiService {
         this.logger.warn(`sendMessage failed: ${JSON.stringify(json)}`);
         return { ok: false as const, error: 'api_error', details: json };
       }
+      this.logger.debug(`sendMessage ok to chat=${chatId}`);
       return { ok: true as const };
     } catch (e) {
       this.logger.warn(`sendMessage exception: ${(e as Error).message}`);

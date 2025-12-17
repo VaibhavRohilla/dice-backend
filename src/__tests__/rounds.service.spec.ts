@@ -4,6 +4,7 @@ import { RoundRecord, RoundRow } from '../rounds/rounds.types';
 const sampleRow: RoundRow = {
   id: 'abc-123',
   chat_id: 42,
+  name: 'Test Chat',
   created_by: 99,
   start_at: new Date('2024-01-01T00:00:00Z').toISOString(),
   end_at: new Date('2024-01-01T00:00:30Z').toISOString(),
@@ -55,6 +56,7 @@ describe('RoundsService (Supabase)', () => {
     const svc = new RoundsService(mock.supabase);
     const res = await svc.insertStartedRound({
       chatId: 42,
+      name: 'Test Chat',
       createdBy: 99,
       startAt: new Date(sampleRow.start_at),
       endAt: new Date(sampleRow.end_at),
@@ -83,6 +85,7 @@ describe('RoundsService (Supabase)', () => {
     await expect(
       svc.insertStartedRound({
         chatId: 1,
+        name: null,
         createdBy: 2,
         startAt: new Date(),
         endAt: new Date(),

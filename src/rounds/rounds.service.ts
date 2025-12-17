@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE_CLIENT } from '../db/db.module';
+import { SUPABASE_CLIENT } from '../db/db.tokens';
 import { RoundRecord, RoundRow } from './rounds.types';
 
 @Injectable()
@@ -9,6 +9,7 @@ export class RoundsService {
 
   async insertStartedRound(input: {
     chatId: number;
+    name: string | null;
     createdBy: number;
     startAt: Date;
     endAt: Date;
@@ -19,6 +20,7 @@ export class RoundsService {
       .insert([
         {
           chat_id: input.chatId,
+          name: input.name,
           created_by: input.createdBy,
           start_at: input.startAt.toISOString(),
           end_at: input.endAt.toISOString(),
@@ -39,6 +41,11 @@ export class RoundsService {
   async setDiceValues(roundId: string, diceValues: number[]): Promise<void> {
     const { error } = await this.supabase.from('rounds').update({ dice_values: diceValues }).eq('id', roundId);
     if (error) throw new Error(`setDiceValues failed: ${error.message}`);
+  }
+
+  async markRoundCancelled(roundId: string): Promise<void> {
+    const { error } = await this.supabase.from('rounds').update({ dice_values: [] }).eq('id', roundId);
+    if (error) throw new Error(`markRoundCancelled failed: ${error.message}`);
   }
 
   async getLatestRound(chatId: number): Promise<RoundRecord | null> {
@@ -63,6 +70,7 @@ export class RoundsService {
     return {
       id: String(row.id),
       chatId: row.chat_id,
+      name: row.name,
       createdBy: row.created_by,
       startAt: new Date(row.start_at),
       endAt: new Date(row.end_at),

@@ -1,6 +1,7 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { RoundSchedulerService } from '../scheduler/round-scheduler.service';
 import { RoundsService } from './rounds.service';
+import { CHAT_ID } from '../config';
 
 @Controller('rounds')
 export class RoundsController {
@@ -10,9 +11,8 @@ export class RoundsController {
   ) {}
 
   @Get('current')
-  async current(@Query('chatId') chatIdRaw: string) {
-    const chatId = Number(chatIdRaw);
-    if (!Number.isFinite(chatId)) throw new BadRequestException('Invalid chatId');
+  async current() {
+    const chatId = CHAT_ID;
 
     const lastOutcome = this.scheduler.getOrCreateLastOutcome(chatId);
     const scheduled = this.scheduler.getScheduled(chatId);
@@ -22,6 +22,8 @@ export class RoundsController {
         chatId,
         startAt: scheduled.startAt,
         endAt: scheduled.endAt,
+        totalMs: scheduled.totalMs,
+        remainingMs: scheduled.remainingMs,
         lastOutcome: {
           diceValues: lastOutcome.diceValues,
           updatedAt: lastOutcome.updatedAt,
@@ -37,10 +39,13 @@ export class RoundsController {
         state: 'STARTED_OR_REVEALED',
         chatId,
         round: {
-          id: String(latest._id),
+          id: latest.id,
+          name: latest.name,
           startAt: latest.startAt.getTime(),
           endAt: latest.endAt.getTime(),
           diceValues: latest.diceValues,
+          totalMs: Math.max(0, latest.endAt.getTime() - latest.startAt.getTime()),
+          remainingMs: Math.max(0, latest.endAt.getTime() - Date.now()),
         },
         lastOutcome: {
           diceValues: lastOutcome.diceValues,

@@ -1,7 +1,8 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { SseHubService } from './sse-hub.service';
 import { RoundSchedulerService } from '../scheduler/round-scheduler.service';
+import { CHAT_ID } from '../config';
 
 @Controller()
 export class SseController {
@@ -11,9 +12,8 @@ export class SseController {
   ) {}
 
   @Get('sse')
-  sse(@Query('chatId') chatIdRaw: string, @Res() res: Response) {
-    const chatId = Number(chatIdRaw);
-    if (!Number.isFinite(chatId)) throw new BadRequestException('Invalid chatId');
+  sse(@Res() res: Response) {
+    const chatId = CHAT_ID;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -45,6 +45,8 @@ export class SseController {
         chatId,
         startAt: scheduled.startAt,
         endAt: scheduled.endAt,
+        totalMs: scheduled.totalMs,
+        remainingMs: scheduled.remainingMs,
         serverNow: Date.now(),
       });
     }

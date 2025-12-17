@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE_CLIENT } from './db.module';
+import { SUPABASE_CLIENT } from './db.tokens';
 
 @Injectable()
 export class DbWarmupService {

@@ -2,8 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { DbWarmupService } from './db-warmup.service';
-
-export const SUPABASE_CLIENT = Symbol('SUPABASE_CLIENT');
+import { SUPABASE_CLIENT } from './db.tokens';
 
 @Global()
 @Module({
