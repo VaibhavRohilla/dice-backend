@@ -16,7 +16,7 @@ describe('RoundSchedulerService', () => {
       insertStartedRound: jest.fn(),
       setDiceValues: jest.fn(),
       markRoundCancelled: jest.fn(),
-      getLatestRound: jest.fn(),
+      getLatestRound: jest.fn().mockResolvedValue(null), // Mock to return no active rounds
     } as any;
     service = new RoundSchedulerService(hub, rounds);
   });
@@ -25,15 +25,15 @@ describe('RoundSchedulerService', () => {
     jest.useRealTimers();
   });
 
-  it('rejects invalid dice', () => {
-    const res = service.scheduleRound(1, 1, [1]);
+  it('rejects invalid dice', async () => {
+    const res = await service.scheduleRound(1, 1, [1]);
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('invalid_dice');
   });
 
-  it('prevents double scheduling', () => {
-    const first = service.scheduleRound(1, 1, dice);
-    const second = service.scheduleRound(1, 1, dice);
+  it('prevents double scheduling', async () => {
+    const first = await service.scheduleRound(1, 1, dice);
+    const second = await service.scheduleRound(1, 1, dice);
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(false);
     expect(second.reason).toBe('already_scheduled');
@@ -43,12 +43,13 @@ describe('RoundSchedulerService', () => {
     rounds.insertStartedRound.mockResolvedValue({ id: 'r1' } as any);
     rounds.setDiceValues.mockResolvedValue(undefined);
 
-    const res = service.scheduleRound(10, 99, dice, 'Test Chat');
+    const res = await service.scheduleRound(10, 99, dice, 'Test Chat');
     expect(res.ok).toBe(true);
     expect(hub.emit).toHaveBeenCalledWith(10, 'round.scheduled', expect.any(Object));
 
     jest.advanceTimersByTime(2000); // trigger start
     await Promise.resolve();
+    await Promise.resolve(); // Wait for retry wrapper
     expect(rounds.insertStartedRound).toHaveBeenCalledTimes(1);
     expect(hub.emit).toHaveBeenCalledWith(
       10,
@@ -58,6 +59,7 @@ describe('RoundSchedulerService', () => {
 
     jest.advanceTimersByTime(26000); // trigger end
     await Promise.resolve();
+    await Promise.resolve(); // Wait for retry wrapper
 
     expect(rounds.setDiceValues).toHaveBeenCalledWith('r1', dice);
     expect(hub.emit).toHaveBeenCalledWith(
@@ -68,8 +70,8 @@ describe('RoundSchedulerService', () => {
     expect(service.getScheduled(10)).toBeNull();
   });
 
-  it('cancels before start', () => {
-    service.scheduleRound(5, 5, dice, 'Another Chat');
+  it('cancels before start', async () => {
+    await service.scheduleRound(5, 5, dice, 'Another Chat');
     const res = service.cancelRound(5);
     expect(res.ok).toBe(true);
     expect(hub.emit).toHaveBeenCalledWith(5, 'round.cancelled', expect.any(Object));
@@ -81,11 +83,12 @@ describe('RoundSchedulerService', () => {
     rounds.insertStartedRound.mockResolvedValue({ id: 'r2' } as any);
     rounds.markRoundCancelled.mockResolvedValue(undefined);
 
-    service.scheduleRound(7, 7, dice, 'Chat');
+    await service.scheduleRound(7, 7, dice, 'Chat');
 
     // Start the round
     jest.advanceTimersByTime(2000);
     await Promise.resolve();
+    await Promise.resolve(); // Wait for retry wrapper
     expect(rounds.insertStartedRound).toHaveBeenCalledTimes(1);
 
     // Cancel after start, before end
@@ -95,6 +98,7 @@ describe('RoundSchedulerService', () => {
     // Advance to end
     jest.advanceTimersByTime(26000);
     await Promise.resolve();
+    await Promise.resolve(); // Wait for retry wrapper
 
     expect(rounds.markRoundCancelled).toHaveBeenCalledTimes(1);
     expect(rounds.setDiceValues).not.toHaveBeenCalled();

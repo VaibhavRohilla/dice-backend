@@ -70,7 +70,7 @@ export class TelegramService {
             ? msg.chat.first_name
             : null;
 
-      const res = this.scheduler.scheduleRound(CHAT_ID, Number(fromId), diceValues, chatName);
+      const res = await this.scheduler.scheduleRound(CHAT_ID, Number(fromId), diceValues, chatName);
       if (!res.ok) {
         const msgText =
           res.reason === 'already_scheduled'

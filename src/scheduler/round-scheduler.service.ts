@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SseHubService } from '../realtime/sse-hub.service';
 import { RoundsService } from '../rounds/rounds.service';
-import { ROUND_TIMING } from '../config';
+import { ROUND_TIMING, CHAT_ID } from '../config';
 
 export type ScheduledRound = {
   chatId: number;
@@ -20,15 +20,74 @@ export type ScheduledRound = {
 type LastOutcome = { diceValues: number[]; updatedAt: number; roundId?: string };
 
 @Injectable()
-export class RoundSchedulerService {
+export class RoundSchedulerService implements OnModuleInit {
   private readonly scheduled = new Map<number, ScheduledRound>();
   private readonly lastOutcome = new Map<number, LastOutcome>();
   private readonly logger = new Logger(RoundSchedulerService.name);
+  private scheduleLock: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly hub: SseHubService,
     private readonly rounds: RoundsService,
   ) {}
+
+  async onModuleInit() {
+    // Restore active rounds from database on server restart
+    await this.restoreActiveRounds();
+  }
+
+  private async restoreActiveRounds() {
+    try {
+      const now = Date.now();
+      const latest = await this.rounds.getLatestRound(CHAT_ID);
+      
+      if (!latest) return;
+      
+      const roundEndAt = latest.endAt.getTime();
+      
+      // Cleanup rounds that have passed their end time but have no dice values (orphaned)
+      if (now >= roundEndAt && !latest.diceValues) {
+        this.logger.warn(`Found orphaned round ${latest.id} past end time, marking as cancelled`);
+        try {
+          await this.retryOperation(() => this.rounds.markRoundCancelled(latest.id), 'markRoundCancelled');
+        } catch (err) {
+          this.logger.error(`Failed to cleanup orphaned round ${latest.id}`, err as Error);
+        }
+        return;
+      }
+      
+      // Note: We cannot fully restore rounds in progress because we don't have the dice values
+      // (they're only stored in memory in the scheduled entry). The database check in scheduleRound
+      // prevents new scheduling while such rounds exist, which is the correct behavior.
+      this.logger.log(`Round ${latest.id} exists in database, will prevent new scheduling until it ends`);
+    } catch (err) {
+      this.logger.error('Failed to restore active rounds on startup', err as Error);
+    }
+  }
+
+  private async retryOperation<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    maxRetries: number = 3,
+    initialDelay: number = 100,
+  ): Promise<T> {
+    let lastError: Error | unknown;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries - 1) {
+          const delay = initialDelay * Math.pow(2, attempt); // Exponential backoff
+          this.logger.warn(
+            `${operationName} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError;
+  }
 
   getScheduled(chatId: number): { startAt: number; endAt: number; totalMs: number; remainingMs: number } | null {
     const s = this.scheduled.get(chatId);
@@ -46,7 +105,7 @@ export class RoundSchedulerService {
     return this.ensureLastOutcome(chatId);
   }
 
-  scheduleRound(chatId: number, createdBy: number, diceValues: number[], name: string | null = null) {
+  async scheduleRound(chatId: number, createdBy: number, diceValues: number[], name: string | null = null) {
     if (
       !Array.isArray(diceValues) ||
       diceValues.length !== 6 ||
@@ -55,7 +114,36 @@ export class RoundSchedulerService {
       return { ok: false as const, reason: 'invalid_dice' as const };
     }
 
-    if (this.scheduled.has(chatId)) return { ok: false, reason: 'already_scheduled' as const };
+    // Use promise-based lock to prevent concurrent schedule requests
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    
+    const previousLock = this.scheduleLock;
+    this.scheduleLock = this.scheduleLock.then(() => lockPromise);
+    
+    await previousLock;
+
+    try {
+      // Check if there's already a scheduled round in memory
+      if (this.scheduled.has(chatId)) {
+        return { ok: false, reason: 'already_scheduled' as const };
+      }
+
+      // Also check database for active rounds (handles server restart scenarios)
+      const latest = await this.rounds.getLatestRound(chatId);
+      if (latest) {
+        const now = Date.now();
+        const roundEndAt = latest.endAt.getTime();
+        // If there's an active round that hasn't finished yet, reject new scheduling
+        if (now < roundEndAt) {
+          return { ok: false, reason: 'already_scheduled' as const };
+        }
+      }
+    } finally {
+      releaseLock!();
+    }
 
     const now = Date.now();
     const startAt = now + ROUND_TIMING.startBufferMs;
@@ -79,13 +167,17 @@ export class RoundSchedulerService {
         const s = this.scheduled.get(chatId);
         if (!s) return;
 
-        const doc = await this.rounds.insertStartedRound({
-          chatId,
-          name: s.name ?? null,
-          createdBy,
-          startAt: new Date(startAt),
-          endAt: new Date(endAt),
-        });
+        const doc = await this.retryOperation(
+          () =>
+            this.rounds.insertStartedRound({
+              chatId,
+              name: s.name ?? null,
+              createdBy,
+              startAt: new Date(startAt),
+              endAt: new Date(endAt),
+            }),
+          'insertStartedRound',
+        );
 
         s.roundId = String(doc.id);
 
@@ -114,10 +206,23 @@ export class RoundSchedulerService {
       }
 
       try {
+        const roundId = s.roundId;
+        if (!roundId) {
+          this.logger.error(`Round ${chatId} has no roundId, cannot finalize`);
+          this.cleanup(chatId);
+          return;
+        }
+        
         if (s.cancelled) {
-          await this.rounds.markRoundCancelled(s.roundId);
+          await this.retryOperation(
+            () => this.rounds.markRoundCancelled(roundId),
+            'markRoundCancelled',
+          );
         } else {
-          await this.rounds.setDiceValues(s.roundId, s.diceValues);
+          await this.retryOperation(
+            () => this.rounds.setDiceValues(roundId, s.diceValues),
+            'setDiceValues',
+          );
 
           this.lastOutcome.set(chatId, {
             diceValues: s.diceValues,

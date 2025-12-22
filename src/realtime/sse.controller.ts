@@ -27,6 +27,7 @@ export class SseController {
         res.write(`: ping ${Date.now()}\n\n`);
       } catch {
         // ignore
+        clearInterval(ping);
       }
     }, 15000);
 
@@ -51,10 +52,15 @@ export class SseController {
       });
     }
 
-    res.on('close', () => {
+    const cleanup = () => {
       clearInterval(ping);
       this.hub.removeClient(chatId, res);
-      res.end();
-    });
+      if (!res.writableEnded) {
+        res.end();
+      }
+    };
+
+    res.on('close', cleanup);
+    res.on('error', cleanup);
   }
 }
