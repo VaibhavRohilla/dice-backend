@@ -35,7 +35,7 @@ If `gen_random_uuid()` is unavailable, enable the `pgcrypto` extension or switch
 - `TELEGRAM_NOTIFY_CHAT_ID` — optional chat ID to receive "Backend connected" on startup
 - `CHAT_ID` (or `SINGLE_CHAT_ID`) — fixed chat id for single-tenant mode (default `1`)
 - `ROUND_START_BUFFER_MS` — delay between scheduling and start (default `1500`)
-- `ROUND_DURATION_MS` — delay between start and result (default `10000`)
+- `ROUND_DURATION_MS` — delay between start and result (default `20000`)
 - `PORT` — optional HTTP port (default 3000)
 
 ### Install & Run

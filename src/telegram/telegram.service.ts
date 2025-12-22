@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbWarmupService } from '../db/db-warmup.service';
 import { RoundSchedulerService } from '../scheduler/round-scheduler.service';
 import { TelegramApiService } from './telegram-api.service';
-import { CHAT_ID } from '../config';
 
 @Injectable()
 export class TelegramService {
@@ -63,18 +62,14 @@ export class TelegramService {
         return;
       }
 
-      const chatName: string | null =
-        typeof msg?.chat?.title === 'string'
-          ? msg.chat.title
-          : typeof msg?.chat?.first_name === 'string'
-            ? msg.chat.first_name
-            : null;
+      // Extract admin name from Telegram message
+      const adminName: string | null = this.getAdminName(msg?.from);
 
-      const res = await this.scheduler.scheduleRound(CHAT_ID, Number(fromId), diceValues, chatName);
+      const res = await this.scheduler.scheduleRound(Number(fromId), diceValues, adminName);
       if (!res.ok) {
         const msgText =
           res.reason === 'already_scheduled'
-            ? 'Round already scheduled ⏳'
+            ? 'Round already active ⏳ Please wait for the current round to end'
             : `Cannot schedule ❌ (${res.reason})`;
         await this.replyError(chatId, msgText, messageId);
         return;
@@ -90,7 +85,7 @@ export class TelegramService {
 
     // ---------- /cancel ----------
     if (text.startsWith('/cancel')) {
-      const res = this.scheduler.cancelRound(CHAT_ID);
+      const res = this.scheduler.cancelRound();
       if (!res.ok) {
         const msgText =
           res.reason === 'too_late'
@@ -160,5 +155,24 @@ export class TelegramService {
     const dice = parts.map(Number);
     if (dice.some((v) => !Number.isInteger(v) || v < 1 || v > 6)) return null;
     return dice;
+  }
+
+  private getAdminName(from: any): string | null {
+    if (!from) return null;
+    
+    // Try first_name + last_name
+    if (typeof from.first_name === 'string') {
+      const firstName = from.first_name;
+      const lastName = typeof from.last_name === 'string' ? from.last_name : '';
+      const fullName = lastName ? `${firstName} ${lastName}`.trim() : firstName;
+      if (fullName) return fullName;
+    }
+    
+    // Fallback to username
+    if (typeof from.username === 'string' && from.username) {
+      return from.username;
+    }
+    
+    return null;
   }
 }

@@ -1,7 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { RoundSchedulerService } from '../scheduler/round-scheduler.service';
 import { RoundsService } from './rounds.service';
-import { CHAT_ID } from '../config';
 
 @Controller('rounds')
 export class RoundsController {
@@ -12,14 +11,11 @@ export class RoundsController {
 
   @Get('current')
   async current() {
-    const chatId = CHAT_ID;
-
-    const lastOutcome = this.scheduler.getOrCreateLastOutcome(chatId);
-    const scheduled = this.scheduler.getScheduled(chatId);
+    const lastOutcome = this.scheduler.getOrCreateLastOutcome();
+    const scheduled = this.scheduler.getScheduled();
     if (scheduled) {
       return {
         state: 'SCHEDULED',
-        chatId,
         startAt: scheduled.startAt,
         endAt: scheduled.endAt,
         totalMs: scheduled.totalMs,
@@ -33,11 +29,10 @@ export class RoundsController {
       };
     }
 
-    const latest = await this.rounds.getLatestRound(chatId);
+    const latest = await this.rounds.getLatestRound();
     if (latest) {
       return {
         state: 'STARTED_OR_REVEALED',
-        chatId,
         round: {
           id: latest.id,
           name: latest.name,
@@ -58,7 +53,6 @@ export class RoundsController {
 
     return {
       state: 'IDLE',
-      chatId,
       lastOutcome: {
         diceValues: lastOutcome.diceValues,
         updatedAt: lastOutcome.updatedAt,

@@ -3,28 +3,22 @@ import { Response } from 'express';
 
 @Injectable()
 export class SseHubService {
-  private readonly groups = new Map<number, Set<Response>>();
+  private readonly clients = new Set<Response>();
 
-  addClient(chatId: number, res: Response) {
-    const set = this.groups.get(chatId) ?? new Set<Response>();
-    set.add(res);
-    this.groups.set(chatId, set);
-    res.on('close', () => this.removeClient(chatId, res));
+  addClient(res: Response) {
+    this.clients.add(res);
+    res.on('close', () => this.removeClient(res));
   }
 
-  removeClient(chatId: number, res: Response) {
-    const set = this.groups.get(chatId);
-    if (!set) return;
-    set.delete(res);
-    if (set.size === 0) this.groups.delete(chatId);
+  removeClient(res: Response) {
+    this.clients.delete(res);
   }
 
-  emit(chatId: number, event: string, data: unknown) {
-    const set = this.groups.get(chatId);
-    if (!set || set.size === 0) return;
+  emit(event: string, data: unknown) {
+    if (this.clients.size === 0) return;
 
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const client of set) {
+    for (const client of this.clients) {
       try {
         client.write(payload);
       } catch {

@@ -8,7 +8,6 @@ export class RoundsService {
   constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
 
   async insertStartedRound(input: {
-    chatId: number;
     name: string | null;
     createdBy: number;
     startAt: Date;
@@ -19,7 +18,7 @@ export class RoundsService {
       .from('rounds')
       .insert([
         {
-          chat_id: input.chatId,
+          chat_id: 0, // Dummy value, not used
           name: input.name,
           created_by: input.createdBy,
           start_at: input.startAt.toISOString(),
@@ -48,11 +47,10 @@ export class RoundsService {
     if (error) throw new Error(`markRoundCancelled failed: ${error.message}`);
   }
 
-  async getLatestRound(chatId: number): Promise<RoundRecord | null> {
+  async getLatestRound(): Promise<RoundRecord | null> {
     const { data, error } = await this.supabase
       .from('rounds')
       .select('*')
-      .eq('chat_id', chatId)
       .order('start_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -69,7 +67,6 @@ export class RoundsService {
   private mapRoundRow(row: RoundRow): RoundRecord {
     return {
       id: String(row.id),
-      chatId: row.chat_id,
       name: row.name,
       createdBy: row.created_by,
       startAt: new Date(row.start_at),

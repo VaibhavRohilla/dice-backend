@@ -11,7 +11,6 @@ export type RoundRow = {
 
 export type RoundRecord = {
   id: string;
-  chatId: number;
   name: string | null;
   createdBy: number;
   startAt: Date;
